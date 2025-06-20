@@ -24,7 +24,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"Bot is alive!")
 
 def run_web_server():
-    port = int(os.environ.get("PORT", 8080)) # Render will set a PORT env var
+    port = int(os.environ.get("PORT", 8080))  # Render will set a PORT env var
     server_address = ('0.0.0.0', port)
     httpd = HTTPServer(server_address, HealthCheckHandler)
     logging.info(f"Starting health check web server on port {port}")
@@ -84,7 +84,6 @@ def create_course_keyboard():
         )]
         for course_id, course in COURSE_DATA.items()
     ]
-    # Add demo button at the bottom
     keyboard.append([InlineKeyboardButton("📸 Show Demo", url="https://t.me/+ukJYiqlkRLYzOTFl")])
     return InlineKeyboardMarkup(keyboard)
 
@@ -94,12 +93,10 @@ def create_course_detail_keyboard(course_id):
     if not course:
         return None
 
-    # URL encode the course details for the deep link
     course_name = quote(course['name'])
     price = course['price']
     features = "|".join([quote(f) for f in course['features']])
 
-    # Create a deep link with pre-filled message
     deep_link = f"https://t.me/{ADMIN_USERNAME}?text="
     message_text = (
         f"Hello Admin,%0A%0A"
@@ -118,56 +115,31 @@ def create_course_detail_keyboard(course_id):
     return InlineKeyboardMarkup(keyboard)
 
 async def send_safe_message(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, reply_markup=None, parse_mode=None):
-    """
-    Safely send a message with proper escaping of special characters.
-    Automatically falls back to plain text if formatting fails.
-    """
     try:
         if parse_mode == "MarkdownV2":
             escaped_text = escape_markdown(text, version=2)
         elif parse_mode == "HTML":
-            escaped_text = text  # HTML escaping is handled by the library
+            escaped_text = text
         else:
             escaped_text = text
 
         if update.callback_query:
             if parse_mode:
-                await update.callback_query.edit_message_text(
-                    escaped_text,
-                    reply_markup=reply_markup,
-                    parse_mode=parse_mode
-                )
+                await update.callback_query.edit_message_text(escaped_text, reply_markup=reply_markup, parse_mode=parse_mode)
             else:
-                await update.callback_query.edit_message_text(
-                    escaped_text,
-                    reply_markup=reply_markup
-                )
+                await update.callback_query.edit_message_text(escaped_text, reply_markup=reply_markup)
         else:
             if parse_mode:
-                await update.message.reply_text(
-                    escaped_text,
-                    reply_markup=reply_markup,
-                    parse_mode=parse_mode
-                )
+                await update.message.reply_text(escaped_text, reply_markup=reply_markup, parse_mode=parse_mode)
             else:
-                await update.message.reply_text(
-                    escaped_text,
-                    reply_markup=reply_markup
-                )
+                await update.message.reply_text(escaped_text, reply_markup=reply_markup)
     except TelegramError as e:
         logger.error(f"Error sending message: {e}")
-        # Fallback to plain text if formatting fails
         try:
             if update.callback_query:
-                await update.callback_query.edit_message_text(
-                    text,
-                    reply_markup=reply_markup
-                )
+                await update.callback_query.edit_message_text(text, reply_markup=reply_markup)
             else:
-                await update.message.reply_text(
-                    text,
-                    reply_markup=reply_markup
-                )
+                await update.message.reply_text(text, reply_markup=reply_markup)
         except TelegramError as e:
             logger.error(f"Fallback message failed: {e}")
             if update.callback_query:
@@ -175,17 +147,14 @@ async def send_safe_message(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
 # --- Handler Functions ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the /start command."""
     welcome_text = "🌟 Welcome to our Premium Bot 📚\n\nSelect a Group below to see its details:"
     await send_safe_message(update, context, welcome_text, reply_markup=create_course_keyboard())
 
 async def show_courses_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show the main courses menu."""
     menu_text = "🌟 Welcome to our Premium Bot 📚\n\nSelect a Group below to see its details:"
     await send_safe_message(update, context, menu_text, reply_markup=create_course_keyboard())
 
 async def select_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle course selection and show Group details."""
     try:
         query = update.callback_query
         await query.answer()
@@ -197,7 +166,6 @@ async def select_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await send_safe_message(update, context, "Error: Group information not found.")
             return
 
-        # Store the selected course details in user_data
         context.user_data['selected_course'] = {
             'id': course_id,
             'name': course['name'],
@@ -205,10 +173,8 @@ async def select_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'features': course['features']
         }
 
-        # Build the course details message
         features = "\n• ".join(course['features'])
         description = course['description']
-
         price_text = f"₹{int(course['price'])}.{int(round((course['price'] - int(course['price'])) * 100)):02d}"
 
         description_text = (
@@ -218,24 +184,17 @@ async def select_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📝 Description:\n{description}"
         )
 
-        await send_safe_message(
-            update,
-            context,
-            description_text,
-            reply_markup=create_course_detail_keyboard(course_id)
-        )
+        await send_safe_message(update, context, description_text, reply_markup=create_course_detail_keyboard(course_id))
     except Exception as e:
         logger.error(f"Error selecting Group: {e}")
         await send_safe_message(update, context, "Sorry, an error occurred while processing your request.")
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Log errors Group by updates."""
     logger.error(f"Update {update} caused error {context.error}")
     if update.effective_message:
         await send_safe_message(update, context, "An error occurred. Please try again later.")
 
 async def contact_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the contact admin request."""
     try:
         query = update.callback_query
         await query.answer()
@@ -257,45 +216,28 @@ async def contact_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📋 Features: {', '.join(course['features'])}"
         )
 
-        # Send message to admin
-        await context.bot.send_message(
-            chat_id=f"@{ADMIN_USERNAME}",
-            text=message_text
-        )
-
-        # Notify user
-        await send_safe_message(
-            update,
-            context,
-            "Your request has been sent to the admin. They will contact you shortly with payment details."
-        )
-
+        await context.bot.send_message(chat_id=f"@{ADMIN_USERNAME}", text=message_text)
+        await send_safe_message(update, context, "Your request has been sent to the admin. They will contact you shortly with payment details.")
     except Exception as e:
         logger.error(f"Error contacting admin: {e}")
         await send_safe_message(update, context, "Sorry, an error occurred while contacting the admin.")
 
 # --- Main Function ---
-async def main() -> None:
-    # Start the web server in a separate thread
+def main():
     web_server_thread = threading.Thread(target=run_web_server)
-    web_server_thread.daemon = True # Allow the main program to exit even if this thread is running
+    web_server_thread.daemon = True
     web_server_thread.start()
 
-    # Create the Application
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-    # Add handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CallbackQueryHandler(show_courses_menu, pattern="^back_to_groups$"))
     application.add_handler(CallbackQueryHandler(select_course, pattern=r"^select_course_"))
     application.add_handler(CallbackQueryHandler(contact_admin, pattern=r"^contact_admin_"))
-
-    # Add error handler
     application.add_error_handler(error_handler)
 
-    # Start the Bot
     logger.info("Starting bot...")
-    await application.run_polling(allowed_updates=Update.ALL_TYPES)
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
