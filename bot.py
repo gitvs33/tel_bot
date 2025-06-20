@@ -1,5 +1,8 @@
 import logging
 import os
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+import asyncio
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -11,6 +14,21 @@ from telegram.ext import (
 from telegram.helpers import escape_markdown
 from telegram.error import TelegramError
 from urllib.parse import quote
+
+# Define a simple web server
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html')
+        self.end_headers()
+        self.wfile.write(b"Bot is alive!")
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 8080)) # Render will set a PORT env var
+    server_address = ('0.0.0.0', port)
+    httpd = HTTPServer(server_address, HealthCheckHandler)
+    logging.info(f"Starting health check web server on port {port}")
+    httpd.serve_forever()
 
 # --- Configuration & Logger Setup ---
 load_dotenv()
@@ -216,7 +234,6 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_message:
         await send_safe_message(update, context, "An error occurred. Please try again later.")
 
-
 async def contact_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the contact admin request."""
     try:
@@ -258,26 +275,27 @@ async def contact_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_safe_message(update, context, "Sorry, an error occurred while contacting the admin.")
 
 # --- Main Function ---
-def main():
-    """Start the bot."""
-    try:
-        # Create the Application
-        application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+async def main() -> None:
+    # Start the web server in a separate thread
+    web_server_thread = threading.Thread(target=run_web_server)
+    web_server_thread.daemon = True # Allow the main program to exit even if this thread is running
+    web_server_thread.start()
 
-        # Add handlers
-        application.add_handler(CommandHandler("start", start_command))
-        application.add_handler(CallbackQueryHandler(show_courses_menu, pattern="^back_to_groups$"))
-        application.add_handler(CallbackQueryHandler(select_course, pattern=r"^select_course_"))
-        application.add_handler(CallbackQueryHandler(contact_admin, pattern=r"^contact_admin_"))
+    # Create the Application
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-        # Add error handler
-        application.add_error_handler(error_handler)
+    # Add handlers
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CallbackQueryHandler(show_courses_menu, pattern="^back_to_groups$"))
+    application.add_handler(CallbackQueryHandler(select_course, pattern=r"^select_course_"))
+    application.add_handler(CallbackQueryHandler(contact_admin, pattern=r"^contact_admin_"))
 
-        # Start the Bot
-        logger.info("Starting bot...")
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
-    except Exception as e:
-        logger.critical(f"Fatal error starting bot: {e}")
-        raise
+    # Add error handler
+    application.add_error_handler(error_handler)
+
+    # Start the Bot
+    logger.info("Starting bot...")
+    await application.run_polling(allowed_updates=Update.ALL_TYPES)
+
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
